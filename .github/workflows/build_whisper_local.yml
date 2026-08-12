@@ -1,0 +1,40 @@
+name: Build Local Whisper
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build_whisper_local.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git cmake build-essential
+      - name: Clone whisper.cpp
+        run: git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
+      - name: Build whisper-cli
+        run: |
+          cmake -S whisper.cpp -B whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build whisper.cpp/build --config Release -j2
+      - name: Download base.en model
+        run: bash whisper.cpp/models/download-ggml-model.sh base.en
+      - name: Prepare artifact
+        run: |
+          mkdir -p whisper-local
+          cp whisper.cpp/build/bin/whisper-cli whisper-local/
+          cp whisper.cpp/models/ggml-base.en.bin whisper-local/
+          cp whisper.cpp/LICENSE whisper-local/LICENSE-whisper.cpp
+          sha256sum whisper-local/* > whisper-local/SHA256SUMS.txt
+          ls -lh whisper-local
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whisper-local-base-en
+          path: whisper-local/
+          retention-days: 7
+          compression-level: 0
