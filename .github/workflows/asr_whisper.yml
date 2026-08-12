@@ -17,11 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Reconstruct compressed audio
+      - name: Reconstruct and verify compressed audio
         run: |
           cat asr_input/chunk00.b64 asr_input/chunk01.b64 asr_input/chunk02.b64 asr_input/chunk03_0.b64 asr_input/chunk03_1.b64 asr_input/chunk04_0.b64 asr_input/chunk04_1.b64 | tr -d '\n\r' | base64 -d > asr_input/test_audio_full.ogg
-          echo "bytes=$(stat -c%s asr_input/test_audio_full.ogg)"
-          ffprobe -v error -show_entries format=duration -of default=nw=1 asr_input/test_audio_full.ogg
+          test "$(stat -c%s asr_input/test_audio_full.ogg)" = "37328"
+          echo "8afee7e6272f058046f684e2b6c2901ab48e9352b081da727a28d22625c49098  asr_input/test_audio_full.ogg" | sha256sum -c -
       - name: Install faster-whisper
         run: pip install --disable-pip-version-check faster-whisper
       - name: Transcribe English audio
