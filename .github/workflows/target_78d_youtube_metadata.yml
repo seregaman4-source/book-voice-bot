@@ -1,0 +1,77 @@
+name: Target 78d YouTube Metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: ['.github/workflows/target_78d_youtube_metadata.yml']
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install playwright core
+        run: npm install playwright-core
+      - name: Extract raw and rendered YouTube metadata
+        run: |
+          mkdir -p out
+          curl -L --max-time 45 -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/150 Safari/537.36' \
+            'https://www.youtube.com/watch?v=78d19HGbxak&hl=ru&gl=RU' -o out/raw.html || true
+          cat > meta.cjs <<'JS'
+          const {chromium}=require('playwright-core'), fs=require('fs'), cp=require('child_process');
+          (async()=>{
+            const chrome=cp.execSync('which google-chrome').toString().trim();
+            const b=await chromium.launch({headless:true,executablePath:chrome,args:['--no-sandbox']});
+            const p=await b.newPage({viewport:{width:1440,height:1000}});
+            let net=[]; p.on('response',r=>{if(/youtube\.com\/(youtubei\/v1\/player|watch)/.test(r.url()))net.push(`${r.status()} ${r.url()}`)});
+            await p.goto('https://www.youtube.com/watch?v=78d19HGbxak&hl=ru&gl=RU',{waitUntil:'domcontentloaded',timeout:45000}).catch(()=>{});
+            await p.waitForTimeout(10000);
+            const result=await p.evaluate(()=>{
+              function pick(o){if(!o)return null; return {
+                videoDetails:o.videoDetails||null,
+                microformat:o.microformat?.playerMicroformatRenderer||null,
+                playabilityStatus:o.playabilityStatus||null,
+                captions:o.captions||null
+              }}
+              return {
+                href:location.href,
+                title:document.title,
+                body:document.body?.innerText?.slice(0,100000)||'',
+                player:pick(window.ytInitialPlayerResponse),
+                ytcfg: window.ytcfg?.data_ || null
+              };
+            });
+            fs.writeFileSync('out/browser.json',JSON.stringify(result,null,2));
+            fs.writeFileSync('out/browser.html',await p.content());
+            fs.writeFileSync('out/network.txt',net.join('\n'));
+            await p.screenshot({path:'out/youtube.png',fullPage:true});
+            await b.close();
+          })().catch(e=>{fs.writeFileSync('out/error.txt',e.stack||String(e));process.exitCode=0});
+          JS
+          node meta.cjs
+          python - <<'PY'
+          import re,json,html
+          from pathlib import Path
+          s=Path('out/raw.html').read_text(errors='ignore')
+          out={}
+          for var in ['ytInitialPlayerResponse','ytInitialData']:
+            m=re.search(r'(?:var\s+)?'+var+r'\s*=\s*({.*?});',s,re.S)
+            if m:
+              try: out[var]=json.loads(m.group(1))
+              except Exception as e: out[var+'_error']=str(e)
+          Path('out/raw-extracted.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          print('raw bytes',len(s),'keys',out.keys())
+          if 'ytInitialPlayerResponse' in out:
+            p=out['ytInitialPlayerResponse']; print(json.dumps({
+              'videoDetails':p.get('videoDetails'),
+              'microformat':p.get('microformat',{}).get('playerMicroformatRenderer'),
+              'playabilityStatus':p.get('playabilityStatus')},ensure_ascii=False,indent=2)[:30000])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-youtube-metadata
+          path: out/
+          retention-days: 7
