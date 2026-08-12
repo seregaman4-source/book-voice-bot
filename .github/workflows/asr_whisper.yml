@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'asr_input/test_audio_1500.ogg'
+      - 'asr_input/chunk*.b64'
       - '.github/workflows/asr_whisper.yml'
   workflow_dispatch:
 
@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Reconstruct compressed audio
+        run: |
+          cat asr_input/chunk00.b64 asr_input/chunk01.b64 asr_input/chunk02.b64 asr_input/chunk03_0.b64 asr_input/chunk03_1.b64 asr_input/chunk04_0.b64 asr_input/chunk04_1.b64 | tr -d '\n\r' | base64 -d > asr_input/test_audio_full.ogg
+          echo "bytes=$(stat -c%s asr_input/test_audio_full.ogg)"
+          ffprobe -v error -show_entries format=duration -of default=nw=1 asr_input/test_audio_full.ogg
       - name: Install faster-whisper
         run: pip install --disable-pip-version-check faster-whisper
       - name: Transcribe English audio
@@ -25,7 +30,7 @@ jobs:
           import json
           from faster_whisper import WhisperModel
 
-          audio='asr_input/test_audio_1500.ogg'
+          audio='asr_input/test_audio_full.ogg'
           model=WhisperModel('small.en', device='cpu', compute_type='int8', cpu_threads=4)
           segments, info = model.transcribe(
               audio,
@@ -49,6 +54,7 @@ jobs:
           with open('transcript.srt','w',encoding='utf-8') as f:
               for i,s in enumerate(out,1):
                   f.write(f"{i}\n{ts(s['start'])} --> {ts(s['end'])}\n{s['text']}\n\n")
+          print(f'LANG={info.language} DURATION={info.duration:.3f} SEGMENTS={len(out)}')
           print('\n'.join(f"[{s['start']:.2f}-{s['end']:.2f}] {s['text']}" for s in out))
           PY
           python /tmp/asr.py
