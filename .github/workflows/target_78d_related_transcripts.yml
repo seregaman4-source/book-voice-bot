@@ -1,0 +1,27 @@
+name: Target 78d Related Transcripts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: ['.github/workflows/target_78d_related_transcripts.yml']
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch same-author related transcripts
+        run: |
+          mkdir -p out
+          for id in PfjTxfBLM-E eR1_Lb3UfBg sMENQ40xkLw; do
+            curl -L --max-time 60 --connect-timeout 10 -sS \
+              "https://youtube-transcript.ai/transcript/${id}.txt" \
+              -o "out/${id}.txt" || true
+            wc -c "out/${id}.txt" || true
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-related-transcripts
+          path: out/
+          retention-days: 7
