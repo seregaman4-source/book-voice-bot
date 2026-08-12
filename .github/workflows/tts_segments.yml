@@ -1,0 +1,33 @@
+name: Generate Timed Russian TTS
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/tts_segments.yml'
+  workflow_dispatch:
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install edge-tts
+      - name: Generate timed voice segments
+        run: |
+          mkdir -p voice
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "Мы рады представить вам десятинедельный курс от Art Mentors." --write-media voice/01.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "Его ведёт Билл Перкинс — известный арт-директор Disney и преподаватель композиции для художников." --write-media voice/02.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "В лекциях и демонстрациях он покажет, как работает визуальный язык искусства." --write-media voice/03.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "Курс подробно разбирает основы дизайна и художественной композиции." --write-media voice/04.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "Вы научитесь понимать искусство как язык и придавать своим работам больше смысла." --write-media voice/05.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "В первом уроке Билл познакомит вас с визуальными компонентами композиции," --write-media voice/06.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "паттернами и тональными отношениями, ясностью изображения и повествования," --write-media voice/07.mp3
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "а также с построением композиционных матриц." --write-media voice/08.mp3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timed-russian-tts
+          path: voice/*.mp3
