@@ -22,19 +22,20 @@ jobs:
       - name: Collect metadata, subtitles, descriptions and thumbnails
         shell: bash
         run: |
-          set -u
-          mkdir -p research_bundle/videos research_bundle/playlists
+          set +e
+          mkdir -p research_bundle/videos research_bundle/playlists research_bundle/logs
           i=0
           while IFS= read -r url || [ -n "$url" ]; do
             [ -z "$url" ] && continue
             i=$((i+1))
+            echo "$url" > "research_bundle/logs/url_${i}.txt"
             if [[ "$url" == *"playlist?list="* ]]; then
               pdir="research_bundle/playlists/p${i}"
               mkdir -p "$pdir"
-              yt-dlp --flat-playlist --dump-single-json "$url" > "$pdir/playlist.json" || true
-              yt-dlp --flat-playlist --print '%(playlist_index)s\t%(id)s\t%(title)s\t%(duration_string)s\t%(channel)s\t%(webpage_url)s' "$url" > "$pdir/playlist.tsv" || true
+              yt-dlp --flat-playlist --dump-single-json "$url" > "$pdir/playlist.json" 2> "$pdir/playlist.err"
+              yt-dlp --flat-playlist --print '%(playlist_index)s\t%(id)s\t%(title)s\t%(duration_string)s\t%(channel)s\t%(webpage_url)s' "$url" > "$pdir/playlist.tsv" 2>> "$pdir/playlist.err"
             else
-              vid=$(yt-dlp --print id --skip-download "$url" 2>/dev/null | head -1)
+              vid=$(yt-dlp --print id --skip-download "$url" 2> "research_bundle/logs/id_${i}.err" | head -1)
               [ -z "$vid" ] && vid="item_${i}"
               vdir="research_bundle/videos/$vid"
               mkdir -p "$vdir"
@@ -42,11 +43,13 @@ jobs:
                 --write-info-json --write-description --write-thumbnail \
                 --write-auto-subs --write-subs \
                 --sub-langs 'ru.*,ru,en.*,en' --sub-format vtt \
-                -o "$vdir/%(id)s.%(ext)s" "$url" > "$vdir/yt-dlp.log" 2>&1 || true
-              yt-dlp --skip-download --print '%(id)s\n%(title)s\n%(channel)s\n%(duration_string)s\n%(upload_date)s\n%(webpage_url)s' "$url" > "$vdir/summary.txt" 2>&1 || true
+                -o "$vdir/%(id)s.%(ext)s" "$url" > "$vdir/yt-dlp.log" 2>&1
+              yt-dlp --skip-download --print '%(id)s\n%(title)s\n%(channel)s\n%(duration_string)s\n%(upload_date)s\n%(webpage_url)s' "$url" > "$vdir/summary.txt" 2>&1
             fi
           done < analysis_urls_2026-08-12.txt
           find research_bundle -maxdepth 3 -type f -printf '%p\t%k KB\n' | sort > research_bundle/FILES.txt
+          cat research_bundle/FILES.txt
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: youtube-research-bundle
