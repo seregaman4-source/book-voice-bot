@@ -22,9 +22,10 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Probe transcript websites
         run: |
-          cat > probe.js <<'JS'
+          cat > probe.cjs <<'JS'
           const { chromium } = require('playwright');
           const fs = require('fs');
+          (async()=>{
           const target = 'https://www.youtube.com/watch?v=78d19HGbxak';
           const sites = [
             ['yttotranscript','https://yttotranscript.com/'],
@@ -87,11 +88,13 @@ jobs:
             await page.close();
           }
           await browser.close();
+          })().catch(e=>{console.error(e); process.exitCode=1});
           JS
-          node probe.js
+          node probe.cjs || true
           grep -RniE 'Контент завод|n8n|reels|shorts|tiktok' out/*.txt | head -100 || true
       - uses: actions/upload-artifact@v4
         with:
           name: target-78d-browser-transcript
           path: out/
+          if-no-files-found: warn
           retention-days: 7
