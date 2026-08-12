@@ -1,0 +1,74 @@
+name: Target 78d Browser Parallel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: ['.github/workflows/target_78d_browser_parallel.yml']
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright library only
+        run: npm install playwright-core
+      - name: Parallel browser transcript probes
+        run: |
+          cat > p.cjs <<'JS'
+          const { chromium } = require('playwright-core');
+          const fs=require('fs');
+          const target='https://www.youtube.com/watch?v=78d19HGbxak';
+          const sites=[
+            ['yttotranscript','https://yttotranscript.com/'],
+            ['supadata','https://supadata.ai/video-transcript'],
+            ['transcribevideo','https://transcribevideo.ai/'],
+            ['socialcrawl','https://www.socialcrawl.dev/tools/social-transcript'],
+            ['shortremix','https://shortremix.com/tools/youtube-shorts-transcript'],
+            ['hookfindr','https://hookfindr.com/']
+          ];
+          fs.mkdirSync('out2',{recursive:true});
+          async function runOne(browser,name,url){
+            const page=await browser.newPage({viewport:{width:1440,height:1000}}); let log=[];
+            page.on('response',r=>{if(/api|transcrib|transcript|caption/i.test(r.url())) log.push(`RESP ${r.status()} ${r.url()}`)});
+            page.on('console',m=>log.push(`CONSOLE ${m.type()} ${m.text()}`));
+            try{
+              await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000}); await page.waitForTimeout(1500);
+              const ins=page.locator('input'); let inp=null;
+              for(let i=0;i<await ins.count();i++){
+                const e=ins.nth(i); const p=((await e.getAttribute('placeholder'))||'').toLowerCase(); const t=((await e.getAttribute('type'))||'').toLowerCase();
+                if(p.includes('youtube')||p.includes('video')||p.includes('paste')||t==='url'){inp=e;break;}
+              }
+              if(!inp && await ins.count()) inp=ins.first();
+              if(inp){await inp.fill(target);log.push('FILLED');}
+              const bs=page.locator('button'); let click=false;
+              for(let i=0;i<await bs.count();i++){const b=bs.nth(i);let s='';try{s=(await b.innerText()).toLowerCase()}catch{};if(/transcrib|transcript|generate|get|convert|extract/.test(s)){try{await b.click({timeout:2500});log.push('CLICK '+s);click=true;break}catch{}}}
+              if(!click&&inp){try{await inp.press('Enter')}catch{}}
+              for(let i=0;i<12;i++){await page.waitForTimeout(5000); const txt=(await page.locator('body').innerText()).slice(0,300000); if(txt.length>6000 && /контент|n8n|автоматизац|reels|shorts/i.test(txt)){log.push(`DETECTED ${txt.length} at ${(i+1)*5}s`);break;}}
+              fs.writeFileSync(`out2/${name}.txt`,await page.locator('body').innerText());
+              fs.writeFileSync(`out2/${name}.html`,await page.content());
+              fs.writeFileSync(`out2/${name}.log`,log.join('\n'));
+              await page.screenshot({path:`out2/${name}.png`,fullPage:true});
+            }catch(e){log.push('ERR '+e.stack);fs.writeFileSync(`out2/${name}.log`,log.join('\n'));try{fs.writeFileSync(`out2/${name}.txt`,await page.locator('body').innerText())}catch{}}
+            await page.close();
+          }
+          (async()=>{
+            const path=require('child_process').execSync('which google-chrome || which chromium || which chromium-browser').toString().trim();
+            console.log('Chrome',path);
+            const browser=await chromium.launch({headless:true,executablePath:path,args:['--no-sandbox']});
+            await Promise.all(sites.map(([n,u])=>runOne(browser,n,u)));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
+          node p.cjs || true
+          echo '--- sizes ---'; wc -c out2/* || true
+          echo '--- hits ---'; grep -RniE 'Контент завод|автоматизац|n8n' out2/*.txt | head -100 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-browser-parallel
+          path: out2/
+          if-no-files-found: warn
+          retention-days: 7
