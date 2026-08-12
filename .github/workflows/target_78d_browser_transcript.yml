@@ -1,0 +1,97 @@
+name: Target 78d Browser Transcript
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/target_78d_browser_transcript.yml'
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - name: Probe transcript websites
+        run: |
+          cat > probe.js <<'JS'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const target = 'https://www.youtube.com/watch?v=78d19HGbxak';
+          const sites = [
+            ['yttotranscript','https://yttotranscript.com/'],
+            ['supadata','https://supadata.ai/video-transcript'],
+            ['transcribevideo','https://transcribevideo.ai/'],
+            ['socialcrawl','https://www.socialcrawl.dev/tools/social-transcript'],
+            ['shortremix','https://shortremix.com/tools/youtube-shorts-transcript']
+          ];
+          fs.mkdirSync('out', {recursive:true});
+          const browser = await chromium.launch({headless:true});
+          for (const [name,url] of sites) {
+            const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }});
+            let log=[];
+            page.on('console', m => log.push('CONSOLE '+m.type()+': '+m.text()));
+            page.on('response', async r => {
+              const u=r.url();
+              if (/transcript|transcrib|caption|api/i.test(u)) log.push(`RESP ${r.status()} ${u}`);
+            });
+            try {
+              await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+              await page.waitForTimeout(2500);
+              const inputs = page.locator('input');
+              let chosen = null;
+              for (let i=0;i<await inputs.count();i++) {
+                const el=inputs.nth(i);
+                const ph=((await el.getAttribute('placeholder'))||'').toLowerCase();
+                const typ=((await el.getAttribute('type'))||'').toLowerCase();
+                if (ph.includes('youtube') || ph.includes('video') || ph.includes('paste') || typ==='url') { chosen=el; break; }
+              }
+              if (!chosen && await inputs.count()) chosen=inputs.first();
+              if (chosen) {
+                await chosen.fill(target);
+                log.push('filled input');
+              }
+              const buttons = page.locator('button');
+              let clicked=false;
+              for (let i=0;i<await buttons.count();i++) {
+                const b=buttons.nth(i); let txt='';
+                try { txt=(await b.innerText()).toLowerCase(); } catch {}
+                if (/transcrib|transcript|generate|get|convert|submit|extract/.test(txt)) {
+                  try { await b.click({timeout:3000}); clicked=true; log.push('clicked: '+txt); break; } catch {}
+                }
+              }
+              if (!clicked && chosen) { try { await chosen.press('Enter'); log.push('pressed enter'); } catch {} }
+              for (let t=0;t<18;t++) {
+                await page.waitForTimeout(5000);
+                const body=(await page.locator('body').innerText()).slice(0,200000);
+                if (/контент завод|n8n|reels|shorts|tiktok/i.test(body) && body.length>3000) { log.push('target-like content detected at '+(t+1)*5+'s'); break; }
+              }
+              fs.writeFileSync(`out/${name}.txt`, await page.locator('body').innerText());
+              fs.writeFileSync(`out/${name}.html`, await page.content());
+              fs.writeFileSync(`out/${name}.log`, log.join('\n'));
+              await page.screenshot({path:`out/${name}.png`,fullPage:true});
+            } catch(e) {
+              log.push('ERROR '+e.stack);
+              fs.writeFileSync(`out/${name}.log`, log.join('\n'));
+              try { fs.writeFileSync(`out/${name}.txt`, await page.locator('body').innerText()); } catch {}
+              try { await page.screenshot({path:`out/${name}.png`,fullPage:true}); } catch {}
+            }
+            await page.close();
+          }
+          await browser.close();
+          JS
+          node probe.js
+          grep -RniE 'Контент завод|n8n|reels|shorts|tiktok' out/*.txt | head -100 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-browser-transcript
+          path: out/
+          retention-days: 7
