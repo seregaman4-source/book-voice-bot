@@ -1,0 +1,36 @@
+name: YouTube Transcript API Batch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/youtube_transcript_api_batch.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch transcripts
+        shell: bash
+        run: |
+          set +e
+          mkdir -p transcripts
+          ids='AEVehVDnwmw Uav9Cyj3w3Q 1OXW8Av12kM xssOvL29XgE dGfxCjYwxMo do5h6kUi7IA 6XNhZu6mJlE 78d19HGbxak KANJ5DaIwyo 3G5BV6aPhjQ j05TMAqyn4M 827ohohrP6s eNndAXWoXNQ U7X_wP4h4JI NbYXtUmIqH8 86-PCIQ-lvo XDaohGikIrk'
+          for id in $ids; do
+            echo "Fetching $id"
+            curl -L --retry 3 --retry-delay 2 --max-time 120 -sS \
+              -D "transcripts/${id}.headers" \
+              "https://youtube-transcript.ai/transcript/${id}.txt" \
+              -o "transcripts/${id}.txt"
+            printf '%s\t' "$id" >> transcripts/SIZES.tsv
+            wc -c < "transcripts/${id}.txt" >> transcripts/SIZES.tsv
+            sleep 1
+          done
+          cat transcripts/SIZES.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-transcripts-batch
+          path: transcripts/
+          retention-days: 7
