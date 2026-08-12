@@ -1,0 +1,70 @@
+name: Target 78d YTT Deep
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: ['.github/workflows/target_78d_ytt_deep.yml']
+
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install browser library
+        run: npm install playwright-core
+      - name: Wait for real transcript and log server actions
+        run: |
+          cat > deep.cjs <<'JS'
+          const { chromium }=require('playwright-core'); const fs=require('fs'); const cp=require('child_process');
+          fs.mkdirSync('out',{recursive:true});
+          const target='https://www.youtube.com/watch?v=78d19HGbxak';
+          async function probe(name,url,buttonRe){
+            const chrome=cp.execSync('which google-chrome').toString().trim();
+            const browser=await chromium.launch({headless:true,executablePath:chrome,args:['--no-sandbox']});
+            const page=await browser.newPage({viewport:{width:1440,height:1000}}); let net=[];
+            page.on('request',r=>{ if(r.method()!=='GET') net.push(`REQ ${r.method()} ${r.url()}\nDATA ${r.postData()||''}`); });
+            page.on('response',async r=>{ if(r.request().method()!=='GET'){ let body=''; try{body=await r.text()}catch{}; net.push(`RESP ${r.status()} ${r.url()}\nBODY ${body.slice(0,100000)}`); }});
+            page.on('console',m=>net.push(`CONSOLE ${m.type()} ${m.text()}`));
+            try{
+              await page.goto(url,{waitUntil:'networkidle',timeout:45000});
+              const ins=page.locator('input'); let inp=null;
+              for(let i=0;i<await ins.count();i++){let e=ins.nth(i);let ph=((await e.getAttribute('placeholder'))||'').toLowerCase();let ty=((await e.getAttribute('type'))||'').toLowerCase(); if(ph.includes('youtube')||ph.includes('video')||ph.includes('paste')||ty==='url'){inp=e;break;}}
+              if(!inp && await ins.count()) inp=ins.first();
+              await inp.fill(target);
+              const buttons=page.locator('button'); let btn=null;
+              for(let i=0;i<await buttons.count();i++){let b=buttons.nth(i);let t='';try{t=(await b.innerText()).trim()}catch{}; if(buttonRe.test(t)){btn=b;net.push('BUTTON '+t);break;}}
+              if(btn) await btn.click(); else await inp.press('Enter');
+              for(let s=0;s<24;s++){
+                await page.waitForTimeout(5000);
+                let txt=await page.locator('body').innerText();
+                fs.writeFileSync(`out/${name}-${String((s+1)*5).padStart(3,'0')}s.txt`,txt);
+                // success heuristic: target result creates substantial new text containing timestamped/transcript controls or Russian spoken text
+                if(/download\s+(txt|srt|vtt)|copy transcript|transcript result|00:0[1-9]|01:00/i.test(txt) && txt.length>12000){ net.push(`SUCCESS_HEURISTIC ${(s+1)*5}s len=${txt.length}`); break; }
+                if(/couldn't|cannot|failed|error|private|unavailable|no captions|verification failed/i.test(txt.slice(0,5000))){net.push(`VISIBLE_ERROR ${(s+1)*5}s`);}
+              }
+              fs.writeFileSync(`out/${name}-final.txt`,await page.locator('body').innerText());
+              fs.writeFileSync(`out/${name}-final.html`,await page.content());
+              await page.screenshot({path:`out/${name}.png`,fullPage:true});
+            }catch(e){net.push('ERROR '+e.stack)}
+            await page.waitForTimeout(1000); fs.writeFileSync(`out/${name}-network.log`,net.join('\n\n')); await browser.close();
+          }
+          (async()=>{
+            await Promise.all([
+              probe('ytt','https://yttotranscript.com/',/^(transcribe|transcribe now|get transcript)$/i),
+              probe('social','https://www.socialcrawl.dev/tools/social-transcript',/transcribe this video/i),
+              probe('tvai','https://transcribevideo.ai/',/generate transcript/i)
+            ]);
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
+          node deep.cjs || true
+          echo '--- network relevant ---'; grep -RniE 'RESP |BODY |SUCCESS|ERROR|78d19|Контент|n8n' out/*network.log | tail -300 || true
+          echo '--- final sizes ---'; wc -c out/*final.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-ytt-deep
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
