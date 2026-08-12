@@ -1,0 +1,34 @@
+name: Target 78d HookFindr API
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: ['.github/workflows/target_78d_hookfindr_api.yml']
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Call speech-to-text fallback API directly
+        run: |
+          mkdir -p out
+          echo '{"url":"https://www.youtube.com/watch?v=78d19HGbxak","via":null}' > payload.json
+          curl -L --fail-with-body --max-time 600 \
+            -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/150 Safari/537.36' \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            --data-binary @payload.json \
+            -D out/headers.txt \
+            -o out/result.json \
+            https://hookfindr.com/api/transcribe || true
+          echo '--- headers ---'; cat out/headers.txt || true
+          echo '--- bytes ---'; wc -c out/result.json || true
+          echo '--- result head ---'; head -c 5000 out/result.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-78d-hookfindr-api
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
