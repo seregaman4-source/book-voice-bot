@@ -44,12 +44,14 @@ def main():
     else:
         filters.append(''.join(narration_labels) + f'amix=inputs={len(narration_labels)}:normalize=0:duration=longest[narr]')
 
-    # Keep source speech audible at a low level under Russian narration and restore it smoothly in gaps.
+    # Pad narration with silence so sidechain processing follows the full source-video duration.
+    # Keep source speech audible quietly under Russian narration and restore it smoothly in gaps.
     filters += [
+        '[narr]apad[narrpad]',
         '[0:a:0]aresample=48000,asetpts=PTS-STARTPTS[orig]',
-        '[orig][narr]sidechaincompress=threshold=0.018:ratio=12:attack=80:release=380:makeup=1[ducked]',
-        '[ducked][narr]amix=inputs=2:normalize=0:duration=first:weights=0.80 1.00[mixpre]',
-        '[mixpre]loudnorm=I=-16:TP=-1.5:LRA=11[ru]'
+        '[orig][narrpad]sidechaincompress=threshold=0.018:ratio=12:attack=80:release=380:makeup=1[ducked]',
+        '[ducked][narrpad]amix=inputs=2:normalize=0:duration=first:weights=0.80 1.00[mixpre]',
+        '[mixpre]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[ru]'
     ]
 
     cmd += ['-filter_complex', ';'.join(filters)]
