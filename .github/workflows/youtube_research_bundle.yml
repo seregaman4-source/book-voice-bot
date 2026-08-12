@@ -1,0 +1,55 @@
+name: YouTube Research Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'analysis_urls_2026-08-12.txt'
+      - '.github/workflows/youtube_research_bundle.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install yt-dlp
+        run: pip install --disable-pip-version-check yt-dlp
+      - name: Collect metadata, subtitles, descriptions and thumbnails
+        shell: bash
+        run: |
+          set -u
+          mkdir -p research_bundle/videos research_bundle/playlists
+          i=0
+          while IFS= read -r url || [ -n "$url" ]; do
+            [ -z "$url" ] && continue
+            i=$((i+1))
+            if [[ "$url" == *"playlist?list="* ]]; then
+              pdir="research_bundle/playlists/p${i}"
+              mkdir -p "$pdir"
+              yt-dlp --flat-playlist --dump-single-json "$url" > "$pdir/playlist.json" || true
+              yt-dlp --flat-playlist --print '%(playlist_index)s\t%(id)s\t%(title)s\t%(duration_string)s\t%(channel)s\t%(webpage_url)s' "$url" > "$pdir/playlist.tsv" || true
+            else
+              vid=$(yt-dlp --print id --skip-download "$url" 2>/dev/null | head -1)
+              [ -z "$vid" ] && vid="item_${i}"
+              vdir="research_bundle/videos/$vid"
+              mkdir -p "$vdir"
+              yt-dlp --skip-download \
+                --write-info-json --write-description --write-thumbnail \
+                --write-auto-subs --write-subs \
+                --sub-langs 'ru.*,ru,en.*,en' --sub-format vtt \
+                -o "$vdir/%(id)s.%(ext)s" "$url" > "$vdir/yt-dlp.log" 2>&1 || true
+              yt-dlp --skip-download --print '%(id)s\n%(title)s\n%(channel)s\n%(duration_string)s\n%(upload_date)s\n%(webpage_url)s' "$url" > "$vdir/summary.txt" 2>&1 || true
+            fi
+          done < analysis_urls_2026-08-12.txt
+          find research_bundle -maxdepth 3 -type f -printf '%p\t%k KB\n' | sort > research_bundle/FILES.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-research-bundle
+          path: research_bundle/
+          if-no-files-found: error
+          retention-days: 14
