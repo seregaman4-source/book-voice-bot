@@ -1,4 +1,4 @@
-name: Build Local Whisper
+name: Build Local Whisper Multilingual
 
 on:
   workflow_dispatch:
@@ -22,23 +22,20 @@ jobs:
         run: |
           cmake -S whisper.cpp -B whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
           cmake --build whisper.cpp/build --config Release -j2
-      - name: Download base.en model
-        run: bash whisper.cpp/models/download-ggml-model.sh base.en
+      - name: Download multilingual base model
+        run: bash whisper.cpp/models/download-ggml-model.sh base
       - name: Prepare artifact
         run: |
           mkdir -p whisper-local/lib
           cp whisper.cpp/build/bin/whisper-cli whisper-local/
           find whisper.cpp/build -type f \( -name 'libwhisper.so*' -o -name 'libggml*.so*' \) -exec cp -L {} whisper-local/lib/ \;
-          cp whisper.cpp/models/ggml-base.en.bin whisper-local/
+          cp whisper.cpp/models/ggml-base.bin whisper-local/
           cp whisper.cpp/LICENSE whisper-local/LICENSE-whisper.cpp
-          sha256sum whisper-local/whisper-cli whisper-local/ggml-base.en.bin whisper-local/lib/* > whisper-local/SHA256SUMS.txt
-          echo '--- files ---'
+          sha256sum whisper-local/whisper-cli whisper-local/ggml-base.bin whisper-local/lib/* > whisper-local/SHA256SUMS.txt
           find whisper-local -maxdepth 2 -type f -ls
-          echo '--- ldd ---'
-          LD_LIBRARY_PATH="$PWD/whisper-local/lib" ldd whisper-local/whisper-cli
       - uses: actions/upload-artifact@v4
         with:
-          name: whisper-local-base-en-with-libs
+          name: whisper-local-base-multilingual-with-libs
           path: whisper-local/
           retention-days: 7
           compression-level: 0
