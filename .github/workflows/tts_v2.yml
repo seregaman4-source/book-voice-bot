@@ -1,0 +1,51 @@
+name: Russian Voiceover V2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'job.json'
+      - 'tts_worker.py'
+      - '.github/workflows/tts_v2.yml'
+  workflow_dispatch:
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure ffmpeg is available
+        run: |
+          if ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffprobe -version | head -1
+
+      - name: Install TTS dependency
+        run: pip install --disable-pip-version-check edge-tts
+
+      - name: Restore neural voice cache
+        uses: actions/cache@v4
+        with:
+          path: .tts_cache
+          key: tts-v2-${{ runner.os }}-${{ hashFiles('tts_worker.py') }}-${{ github.run_id }}
+          restore-keys: |
+            tts-v2-${{ runner.os }}-${{ hashFiles('tts_worker.py') }}-
+
+      - name: Generate timed Russian segments in parallel
+        run: python tts_worker.py
+
+      - name: Publish result
+        uses: actions/upload-artifact@v4
+        with:
+          name: russian-voice-v2
+          path: voice_v2/
+          if-no-files-found: error
+          retention-days: 30
