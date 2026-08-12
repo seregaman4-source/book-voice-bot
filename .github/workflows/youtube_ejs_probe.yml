@@ -1,0 +1,44 @@
+name: YouTube EJS Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/youtube_ejs_probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install current yt-dlp with EJS deps
+        run: pip install -U 'yt-dlp[default]'
+      - name: Probe clients
+        shell: bash
+        run: |
+          set +e
+          mkdir -p probe
+          id='Uav9Cyj3w3Q'
+          for client in web_embedded tv android_vr web_safari; do
+            echo "=== $client ===" | tee "probe/${client}.log"
+            yt-dlp -v --js-runtimes node --remote-components ejs:github \
+              --extractor-args "youtube:player_client=${client}" \
+              --skip-download --list-subs "https://www.youtube.com/watch?v=$id" \
+              >> "probe/${client}.log" 2>&1
+            yt-dlp -v --js-runtimes node --remote-components ejs:github \
+              --extractor-args "youtube:player_client=${client}" \
+              -f 'bestaudio[ext=m4a]/bestaudio/best' --max-filesize 50M \
+              -o "probe/${client}.%(ext)s" "https://www.youtube.com/watch?v=$id" \
+              >> "probe/${client}.log" 2>&1
+          done
+          ls -lh probe
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-ejs-probe
+          path: probe/
+          retention-days: 7
