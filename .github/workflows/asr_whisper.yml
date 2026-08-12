@@ -1,0 +1,61 @@
+name: Whisper ASR Test Video
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'asr_input/test_audio_1500.ogg'
+      - '.github/workflows/asr_whisper.yml'
+  workflow_dispatch:
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install faster-whisper
+        run: pip install --disable-pip-version-check faster-whisper
+      - name: Transcribe English audio
+        run: |
+          cat > /tmp/asr.py <<'PY'
+          import json
+          from faster_whisper import WhisperModel
+
+          audio='asr_input/test_audio_1500.ogg'
+          model=WhisperModel('small.en', device='cpu', compute_type='int8', cpu_threads=4)
+          segments, info = model.transcribe(
+              audio,
+              language='en',
+              beam_size=5,
+              vad_filter=True,
+              word_timestamps=True,
+              condition_on_previous_text=True,
+          )
+          out=[]
+          for s in segments:
+              words=[]
+              if s.words:
+                  words=[{'start':w.start,'end':w.end,'word':w.word,'probability':w.probability} for w in s.words]
+              out.append({'start':s.start,'end':s.end,'text':s.text.strip(),'words':words})
+          with open('transcript.json','w',encoding='utf-8') as f:
+              json.dump({'language':info.language,'duration':info.duration,'segments':out},f,ensure_ascii=False,indent=2)
+          def ts(t):
+              ms=round(t*1000); h=ms//3600000; ms%=3600000; m=ms//60000; ms%=60000; sec=ms//1000; ms%=1000
+              return f'{h:02}:{m:02}:{sec:02},{ms:03}'
+          with open('transcript.srt','w',encoding='utf-8') as f:
+              for i,s in enumerate(out,1):
+                  f.write(f"{i}\n{ts(s['start'])} --> {ts(s['end'])}\n{s['text']}\n\n")
+          print('\n'.join(f"[{s['start']:.2f}-{s['end']:.2f}] {s['text']}" for s in out))
+          PY
+          python /tmp/asr.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whisper-transcript
+          path: |
+            transcript.json
+            transcript.srt
+          retention-days: 7
