@@ -26,15 +26,19 @@ jobs:
         run: bash whisper.cpp/models/download-ggml-model.sh base.en
       - name: Prepare artifact
         run: |
-          mkdir -p whisper-local
+          mkdir -p whisper-local/lib
           cp whisper.cpp/build/bin/whisper-cli whisper-local/
+          find whisper.cpp/build -type f \( -name 'libwhisper.so*' -o -name 'libggml*.so*' \) -exec cp -L {} whisper-local/lib/ \;
           cp whisper.cpp/models/ggml-base.en.bin whisper-local/
           cp whisper.cpp/LICENSE whisper-local/LICENSE-whisper.cpp
-          sha256sum whisper-local/* > whisper-local/SHA256SUMS.txt
-          ls -lh whisper-local
+          sha256sum whisper-local/whisper-cli whisper-local/ggml-base.en.bin whisper-local/lib/* > whisper-local/SHA256SUMS.txt
+          echo '--- files ---'
+          find whisper-local -maxdepth 2 -type f -ls
+          echo '--- ldd ---'
+          LD_LIBRARY_PATH="$PWD/whisper-local/lib" ldd whisper-local/whisper-cli
       - uses: actions/upload-artifact@v4
         with:
-          name: whisper-local-base-en
+          name: whisper-local-base-en-with-libs
           path: whisper-local/
           retention-days: 7
           compression-level: 0
