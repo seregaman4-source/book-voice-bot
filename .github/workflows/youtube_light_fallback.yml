@@ -1,0 +1,36 @@
+name: YouTube Light Fallback
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/youtube_light_fallback.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch oEmbed and caption endpoints
+        shell: bash
+        run: |
+          set +e
+          mkdir -p light_fallback
+          ids='AEVehVDnwmw Uav9Cyj3w3Q 1OXW8Av12kM xssOvL29XgE dGfxCjYwxMo do5h6kUi7IA 6XNhZu6mJlE 78d19HGbxak'
+          for id in $ids; do
+            d="light_fallback/$id"; mkdir -p "$d"
+            curl -L --max-time 20 -A 'Mozilla/5.0' "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=$id&format=json" -o "$d/oembed.json" -sS
+            curl -L --max-time 20 -A 'Mozilla/5.0' "https://www.youtube.com/api/timedtext?type=list&v=$id" -o "$d/tracks.xml" -sS
+            for lang in ru en; do
+              curl -L --max-time 20 -A 'Mozilla/5.0' "https://www.youtube.com/api/timedtext?v=$id&lang=$lang&kind=asr&fmt=vtt" -o "$d/${lang}_asr.vtt" -sS
+              curl -L --max-time 20 -A 'Mozilla/5.0' "https://www.youtube.com/api/timedtext?v=$id&lang=$lang&fmt=vtt" -o "$d/${lang}.vtt" -sS
+            done
+            wc -c "$d"/* > "$d/sizes.txt"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-light-fallback
+          path: light_fallback/
+          retention-days: 7
