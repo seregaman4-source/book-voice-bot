@@ -1,0 +1,56 @@
+name: YouTube Embed Captions Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/youtube_embed_captions.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe embed pages
+        shell: bash
+        run: |
+          set +e
+          mkdir -p embed_probe
+          ids='AEVehVDnwmw Uav9Cyj3w3Q 1OXW8Av12kM xssOvL29XgE dGfxCjYwxMo do5h6kUi7IA 6XNhZu6mJlE 78d19HGbxak'
+          for id in $ids; do
+            curl -L --compressed -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/136 Safari/537.36' \
+              "https://www.youtube.com/embed/$id?hl=ru" -o "embed_probe/$id.html" -sS
+            python - "$id" <<'PY'
+          import json,re,sys,html as h
+          from pathlib import Path
+          vid=sys.argv[1]
+          p=Path('embed_probe')/f'{vid}.html'
+          s=p.read_text(errors='ignore') if p.exists() else ''
+          out={'id':vid,'html_bytes':len(s),'captionTracks_found':'captionTracks' in s,'title':None,'tracks':[]}
+          m=re.search(r'<title>(.*?)</title>',s,re.S|re.I)
+          if m: out['title']=h.unescape(re.sub('<.*?>','',m.group(1))).strip()
+          # Extract captionTracks JSON array from escaped player response if present
+          pos=s.find('captionTracks')
+          if pos>=0:
+              sample=s[max(0,pos-500):pos+10000]
+              (Path('embed_probe')/f'{vid}_caption_context.txt').write_text(sample,errors='ignore')
+              # Match common unescaped JSON form
+              m2=re.search(r'"captionTracks"\s*:\s*(\[.*?\])\s*,\s*"audioTracks"',s,re.S)
+              if not m2:
+                  m2=re.search(r'\\"captionTracks\\"\s*:\s*(\[.*?\])\s*,\s*\\"audioTracks\\"',s,re.S)
+              if m2:
+                  raw=m2.group(1).replace('\\"','"').replace('\\u0026','&')
+                  try:
+                      tracks=json.loads(raw)
+                      out['tracks']=[{'baseUrl':t.get('baseUrl'),'name':t.get('name'),'languageCode':t.get('languageCode'),'kind':t.get('kind')} for t in tracks]
+                  except Exception as e: out['parse_error']=str(e)
+          (Path('embed_probe')/f'{vid}.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          done
+          cat embed_probe/*.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-embed-caption-probe
+          path: embed_probe/
+          retention-days: 7
