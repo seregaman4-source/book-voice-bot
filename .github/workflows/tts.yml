@@ -1,0 +1,25 @@
+name: Generate Russian TTS
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/tts.yml'
+  workflow_dispatch:
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install edge-tts
+      - name: Generate voice
+        run: |
+          edge-tts --voice ru-RU-DmitryNeural --rate=-4% --pitch=-2Hz --text "Мы рады представить вам десятинедельный курс по композиции. Его ведёт Билл Перкинс — известный арт-директор и преподаватель композиции для художников. В лекциях и демонстрациях он покажет, как работает визуальный язык искусства. Курс подробно разбирает основы дизайна и художественной композиции. Вы научитесь понимать искусство как язык и придавать своим работам больше смысла. В первом уроке Билл познакомит вас с визуальными компонентами композиции, паттернами и тональными отношениями, ясностью изображения и повествования, а также с построением композиционных матриц." --write-media dmitry-test.mp3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmitry-tts
+          path: dmitry-test.mp3
