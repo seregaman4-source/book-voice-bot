@@ -1,0 +1,53 @@
+name: YouTube Transcript Parallel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/youtube_transcript_parallel.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Fetch transcripts in parallel
+        shell: bash
+        run: |
+          mkdir -p transcripts
+          cat > ids.txt <<'EOF'
+          AEVehVDnwmw
+          Uav9Cyj3w3Q
+          1OXW8Av12kM
+          xssOvL29XgE
+          dGfxCjYwxMo
+          do5h6kUi7IA
+          6XNhZu6mJlE
+          78d19HGbxak
+          KANJ5DaIwyo
+          3G5BV6aPhjQ
+          j05TMAqyn4M
+          827ohohrP6s
+          eNndAXWoXNQ
+          U7X_wP4h4JI
+          NbYXtUmIqH8
+          86-PCIQ-lvo
+          XDaohGikIrk
+          EOF
+          fetch_one() {
+            id="$1"
+            code=$(curl -L --max-time 60 --connect-timeout 10 -sS -w '%{http_code}' \
+              "https://youtube-transcript.ai/transcript/${id}.txt" \
+              -o "transcripts/${id}.txt" || true)
+            bytes=$(wc -c < "transcripts/${id}.txt" 2>/dev/null || echo 0)
+            printf '%s\t%s\t%s\n' "$id" "$code" "$bytes" > "transcripts/${id}.status"
+          }
+          export -f fetch_one
+          cat ids.txt | xargs -n1 -P8 bash -c 'fetch_one "$0"'
+          cat transcripts/*.status | sort | tee transcripts/STATUS.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtube-transcripts-parallel
+          path: transcripts/
+          retention-days: 7
